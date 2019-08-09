@@ -20,6 +20,9 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
+// Only uncomment and use the next line if it keeps asking for your API!
+// setAPI("API") // replace API with your api key
+
 var settings = {
     apiDelay: 1000, // in milliseconds
     pages: {
