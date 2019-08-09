@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         TORN: Stat Estimate
-// @version      2.3.0
+// @version      2.3.1
 // @author       DeKleineKobini
 // @description  Estimate the stats of a player based on their rank.
 // @namespace    dekleinekobini.statestimate
