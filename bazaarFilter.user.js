@@ -4,7 +4,6 @@
 // @author       DeKleineKobini
 // @description  Filter items in a bazaar!
 // @namespace    dekleinekobini.bazaarfilter
-// @require      https://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js
 // @require      https://openuserjs.org/src/libs/DeKleineKobini/DKK_Torn_Utilities.js
 // @match        https://www.torn.com/bazaar.php*
 // @match        https://www.torn.com/imarket.php*
