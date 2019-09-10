@@ -46,7 +46,7 @@ var settings = {
     }
 }
 
-setDebug(true);
+setDebug(false);
 
 /* --------------------
 CODE - EDIT ON OWN RISK
