@@ -1,11 +1,9 @@
 // ==UserScript==
 // @name         TORN: Stat Estimate
-// @version      2.3.1
+// @version      2.5.0
 // @author       DeKleineKobini
 // @description  Estimate the stats of a player based on their rank.
 // @namespace    dekleinekobini.statestimate
-// @run-at       document-start
-// @require      https://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js
 // @require      https://openuserjs.org/src/libs/DeKleineKobini/DKK_Torn_Utilities.js
 // @match        https://www.torn.com/index.php*
 // @match        https://www.torn.com/profiles.php*
@@ -13,18 +11,18 @@
 // @match        https://www.torn.com/halloffame.php*
 // @match        https://www.torn.com/bounties.php*
 // @match        https://www.torn.com/blacklist.php*
-// @match        https://www.torn.com/factions.php?*
+// @match        https://www.torn.com/factions.php*
+// @match        https://www.torn.com/competition.php*
 // @license      MIT
 // @updateURL    https://openuserjs.org/meta/DeKleineKobini/TORN_Stat_Estimate.meta.js
 // @connect      api.torn.com
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
 // ==/UserScript==
 
-// Only uncomment and use the next line if it keeps asking for your API!
-// setAPI("API") // replace API with your api key
-
 var settings = {
-    apiDelay: 1000, // in milliseconds
+    apiDelay: 1000, // in milliseconds, default 1000ms
     pages: {
         profile: true,
         search: true,
@@ -33,12 +31,18 @@ var settings = {
         hallOfFame: true,
         bounties: true,
         blacklist: true,
-        factionWall: true
+        factionWall: true,
+        competition: true
     },
     ignore: {
         enabled: false,
         level: 50, // only show stats below this level
         showEmpty: true
+    },
+    cache: { // in milliseconds, -1 is infinite
+        /*normal: 12 * 60 * 60 * 1000,*/ // default 12h
+        normal: 3 * 24 * 60 * 60 * 1000,
+        last: 31 * 24 * 60 * 60 * 1000 // default 31d
     }
 }
 
@@ -47,8 +51,8 @@ setDebug(true);
 /* --------------------
 CODE - EDIT ON OWN RISK
 -------------------- */
-requireAPI();
 setPrefixEasy("SE");
+requireAPI();
 
 var ranks = {
     'Absolute beginner': 1,
@@ -84,7 +88,7 @@ const triggerLevel = [ 2, 6, 11, 26, 31, 50, 71, 100 ];
 const triggerCrime = [ 100, 5000, 10000, 20000, 30000, 50000 ];
 const triggerNetworth = [ 5000000, 50000000, 500000000, 5000000000, 50000000000 ];
 
-var estimatedStats = [
+const estimatedStats = [
     "under 2k",
     "2k - 25k",
     "20k - 250k",
@@ -93,10 +97,20 @@ var estimatedStats = [
     "20m - 250m",
     "over 200m",
 ];
+const PREFIX_CACHE = "id_";
+
+var cache = {};
+
+getCachedEstimated("statestimate", true).then(c => { cache = c || {}; });
+
+async function getCachedEstimated(key, subbed) {
+    let _obj = await GM_getValue(key, subbed ? "{}" : "{\"end\":0}");
+    let obj = JSON.parse(_obj);
+
+    return obj;
+}
 
 (function() {
-    'use strict';
-
     var page = getCurrentPage();
 
     debug("Current page is '" + page + "' with step '" + new URL(window.location.href).searchParams.get("step") + "'");
@@ -121,7 +135,7 @@ function startListeners(page){
                         if (result === EMPTY_CHAR) return;
 
                         $(".content-title > h4").append("<div>" + result + "</div>");
-                    });
+                    }, 0);
                 }
             });
             break;
@@ -141,33 +155,49 @@ function startListeners(page){
                         if (!settings.ignore.showEmpty) return;
                         else delay = 0;
                     }
+                    if (getSubCache(cache, PREFIX_CACHE + player.userID)) {
+                        ignore++;
+                        delay = 0;
+                    }
 
-                    setTimeout(function(){
-                        updateUser(player.userID, player.level * 1, function(result) {
-                            if (result === EMPTY_CHAR) return;
-                            var row = $(".user-info-list-wrap > li").eq(index);
-                            var iconWrap = row.find(".icons-wrap");
+                    // setTimeout(function(){
+                    updateUser(player.userID, player.level * 1, function(result) {
+                        if (result === EMPTY_CHAR) return;
+                        var row = $(".user-info-list-wrap > li").eq(index);
+                        var iconWrap = row.find(".icons-wrap");
 
-                            $("<span class='level' style='border-left: 0px solid transparent; width: 75px;'>" + result + "</p>").insertAfter(row.find(".level"));
-                            row.find(".user-icons").css("width", "initial");
-                            iconWrap.css("width", "initial");
-                            iconWrap.find("ul").css("width", "initial");
-                        });
+                        $("<span class='level' style='border-left: 0px solid transparent; width: 75px;'>" + result + "</p>").insertAfter(row.find(".level"));
+                        row.find(".user-icons").css("width", "initial");
+                        iconWrap.css("width", "initial");
+                        iconWrap.find("ul").css("width", "initial");
                     }, delay);
+                    // }, delay);
                 });
             });
             break;
         case "halloffame":
-            observeMutations(document, ".hall-of-fame-list-wrap", true, function(obs){
-                observeMutations($(".hall-of-fame-list-wrap")[0], ".players-list", false, function(obs){
+            observeMutations(document, ".hall-of-fame-list-wrap", true, function(mut, obs){
+                observeMutations($(".hall-of-fame-list-wrap")[0], ".players-list", false, function(mut, obs){
                     ignore = 0;
+
+                    var indexLevel;
+                    $(".table-titles > li").each(function(index) {
+                        if ($(this).html().includes("Level")) {
+                            indexLevel = index + 1;
+                        }
+                    });
 
                     $(".rank").eq(1).html("Stats");
                     $(".players-list > li").each(function(index) {
                         var row = $(this);
                         let id = row.find(".player > .name").attr("href");
+                        if (!id) {
+                            ignore++;
+                            return;
+                        }
                         id = id.substring(id.indexOf("=") + 1);
-                        let level = stripHtml(row.find(".player-info > li").eq(6).html());
+                        let level = stripHtml(row.find(".player-info > li").eq(indexLevel).html());
+                        debug(level);
                         level = level.substring(level.indexOf(":") + 1) * 1;
 
                         let delay = settings.apiDelay * (index - ignore);
@@ -178,23 +208,27 @@ function startListeners(page){
                             if (!settings.ignore.showEmpty) return;
                             else delay = 0;
                         }
+                        if (getSubCache(cache, PREFIX_CACHE + id)) {
+                            ignore++;
+                            delay = 0;
+                        }
 
-                        setTimeout(function(){
-                            updateUser(id, level, function(result) {
-                                row.find(".rank").html(result);
-                                let iconWrap = row.find(".icons-wrap");
+                        // setTimeout(function(){
+                        updateUser(id, level, function(result) {
+                            row.find(".rank").html(result);
+                            let iconWrap = row.find(".icons-wrap");
 
-                                row.find(".user-icons").css("width", "initial");
-                                iconWrap.css("width", "initial");
-                                iconWrap.find("ul").css("width", "initial");
-                            });
+                            row.find(".user-icons").css("width", "initial");
+                            iconWrap.css("width", "initial");
+                            iconWrap.find("ul").css("width", "initial");
                         }, delay);
+                        // }, delay);
                     });
                 });
             }, { childList: true, subtree: true });
             break;
         case "index":
-            observeMutations(document, ".users-list", true, function(obs){
+            observeMutations(document, ".users-list", true, function(mut, obs){
                 ignore = 0;
 
                 $(".users-list > li").each(function(index) {
@@ -212,18 +246,22 @@ function startListeners(page){
                         if (!settings.ignore.showEmpty) return;
                         else delay = 0;
                     }
+                    if (getSubCache(cache, PREFIX_CACHE + id)) {
+                        ignore++;
+                        delay = 0;
+                    }
 
-                    setTimeout(function(){
-                        updateUser(id, level, function(result) {
-                            row.find(".rank").html(result);
-                            let iconWrap = row.find(".icons-wrap");
+                    // setTimeout(function(){
+                    updateUser(id, level, function(result) {
+                        row.find(".rank").html(result);
+                        let iconWrap = row.find(".icons-wrap");
 
-                            $("<span class='level' style='width: 75px;'>" + result + "</p>").insertAfter(row.find(".status"));
-                            row.find(".center-side-bottom").css("width", "initial");
-                            iconWrap.css("width", "initial");
-                            iconWrap.find("ul").css("width", "initial");
-                        });
+                        $("<span class='level' style='width: 75px;'>" + result + "</p>").insertAfter(row.find(".status"));
+                        row.find(".center-side-bottom").css("width", "initial");
+                        iconWrap.css("width", "initial");
+                        iconWrap.find("ul").css("width", "initial");
                     }, delay);
+                    // }, delay);
                 });
             }, { childList: true, subtree: true });
             break;
@@ -231,7 +269,7 @@ function startListeners(page){
             xhrIntercept(function(page, json, uri){
                 if(page != "bounties") return;
 
-                observeMutations($(".content-wrapper")[0], ".bounties-list", true, function(obs){
+                observeMutations($(".content-wrapper")[0], ".bounties-list", true, function(mut, obs){
                     let names = [];
                     ignore = 0;
 
@@ -254,15 +292,19 @@ function startListeners(page){
                             if (!settings.ignore.showEmpty) return;
                             else delay = 0;
                         }
+                        if (getSubCache(cache, PREFIX_CACHE + id)) {
+                            ignore++;
+                            delay = 0;
+                        }
 
                         names.push(name);
-                        setTimeout(function(){
-                            updateUser(id, level, function(result) {
-                                $("li:has(a[href='profiles.php?XID=" + id + "'])").each(function(){
-                                    $(this).find(".listed").html(result);
-                                });
+                        //setTimeout(function(){
+                        updateUser(id, level, function(result) {
+                            $("li:has(a[href='profiles.php?XID=" + id + "'])").each(function(){
+                                $(this).find(".listed").html(result);
                             });
                         }, delay);
+                        //}, delay);
 
                     });
                 });
@@ -272,7 +314,7 @@ function startListeners(page){
             xhrIntercept(function(page, json, uri){
                 if(page != "userlist" || !uri) return;
 
-                observeMutations($(".blacklist")[0], ".user-info-blacklist-wrap", true, function(obs){
+                observeMutations($(".blacklist")[0], ".user-info-blacklist-wrap", true, function(mut, obs) {
                     ignore = 0;
 
                     $(".user-info-blacklist-wrap > li").each(function(index) {
@@ -290,44 +332,125 @@ function startListeners(page){
                             if (!settings.ignore.showEmpty) return;
                             else delay = 0;
                         }
+                        if (getSubCache(cache, PREFIX_CACHE + id)) {
+                            ignore++;
+                            delay = 0;
+                        }
 
-                        setTimeout(function(){
-                            updateUser(id, level, function(result) {
-                                //if (result === EMPTY_CHAR) return;
-                                var iconWrap = row.find(".description-editor");
+                        //setTimeout(function(){
+                        updateUser(id, level, function(result) {
+                            //if (result === EMPTY_CHAR) return;
+                            var iconWrap = row.find(".description-editor");
 
-                                var ele = $("<span class='level right' style='width: 75px;'>" + result + "</p>");
-                                ele.insertAfter(row.find(".edit"));
-                                //ele.insertAfter(row.find(".description"));
-                                ele.css("float", "right");
-                                //row.find(".user-icons").css("width", "initial");
-                                row.find(".description .text").css("width", "initial");
-                                //iconWrap.find("*").not(".edit").css("width", "initial");
-                            });
+                            var ele = $("<span class='level right' style='width: 75px;'>" + result + "</p>");
+                            ele.insertAfter(row.find(".edit"));
+                            //ele.insertAfter(row.find(".description"));
+                            ele.css("float", "right");
+                            //row.find(".user-icons").css("width", "initial");
+                            row.find(".description .text").css("width", "initial");
+                            //iconWrap.find("*").not(".edit").css("width", "initial");
                         }, delay);
+                        //}, delay);
                     });
                 });
             });
             break;
         case "factions":
-            loadWall();
+            // detectHashChange(loadWall)
 
-            $(window).bind('hashchange', function() {
-                loadWall();
+            detectHashChange(function() {
+                var hashSplit = window.location.hash.split("/");
+                if (hashSplit[1] != "war" || isNaN(hashSplit[2])) return;
+
+                observeMutations(document, ".members-list", true, function(mut, obs) {
+                    $(".user-icons").eq(0).html("Stats");
+
+                    updateWall();
+                    observeMutations($(".members-list")[0], ".members-list > .enemy", false, function(mut, obs) {
+                        debug("Member list got updated.")
+                        updateWall();
+                    });
+                }, { childList: true, subtree: true });
+            });
+            break;
+        case "competition":
+            var linked = false;
+            detectHashChange(function() {
+                if (linked) return;
+
+                if (hasSpecialTag("p", "team")) { // Elimination 2019
+                    log("Starting to check for elimination!");
+                    xhrIntercept((page, json, uri) => {
+                        if(page != "competition" || !uri || !hasSpecialTag("p", "team")) return;
+
+                        observeMutations($("#competition-wrap")[0], ".competition-list", true, (mut, obs) => {
+                            ignore = 0;
+                            debug($(".competition-list").find(".name a").first().attr("data-placeholder"));
+                            $(".competition-list > li > ul").each(function(index) {
+                                var row = $(this);
+                                let id = row.find(".user").attr("href");
+                                if (!id) {
+                                    ignore++;
+                                    return;
+                                }
+                                id = id.substring(id.indexOf("=") + 1);
+                                let level = stripHtml(row.find(".level").html()) * 1;
+                                debug(id + " / " + level)
+
+                                let delay = settings.apiDelay * (index - ignore);
+
+                                if (shouldIgnore(level)){
+                                    ignore++;
+
+                                    if (!settings.ignore.showEmpty) return;
+                                    else delay = 0;
+                                }
+                                if (getSubCache(cache, PREFIX_CACHE + id)) {
+                                    ignore++;
+                                    delay = 0;
+                                }
+
+                                debug(`${index} => ${delay}`);
+                                // if (true) return;
+                                // setTimeout(function(){
+                                updateUser(id, level, function(result) {
+                                    row.find(".icons").html(result);
+                                    /*
+                                    let iconWrap = row.find(".icons-wrap");
+
+                                    row.find(".user-icons").css("width", "initial");
+                                    iconWrap.css("width", "initial");
+                                    iconWrap.find("ul").css("width", "initial");*/
+                                }, delay);
+                                // }, delay);
+                            });
+
+                        });
+                    });
+                    linked = true;
+                }
             });
             break;
     }
+}
+
+function detectHashChange(funct) {
+    funct();
+
+    $(window).bind('hashchange', function() {
+        funct();
+    });
 }
 
 function loadWall() {
     var hashSplit = window.location.hash.split("/");
     if (hashSplit[1] != "war" || isNaN(hashSplit[2])) return;
 
-    observeMutations(document, ".members-list", true, function(){
+    observeMutations(document, ".members-list", true, function(mut, obs) {
         $(".user-icons").eq(0).html("Stats");
 
         updateWall();
-        observeMutations($(".members-list")[0], ".members-list > .enemy", false, function(){
+        observeMutations($(".members-list")[0], ".members-list > .enemy", false, function(mut, obs) {
             debug("Member list got updated.")
             updateWall();
         });
@@ -354,16 +477,14 @@ function updateWall() {
             else delay = 0;
         }
 
-        setTimeout(function(){
-            updateUser(id, level, function(result) {
-                if (result === EMPTY_CHAR) return;
+        updateUser(id, level, function(result) {
+            if (result === EMPTY_CHAR) return;
 
-                var iconWrap = row.find(".user-icons");
+            var iconWrap = row.find(".user-icons");
 
-                $("<span class='level left' style='border-left: 0px solid transparent; width: 70px;'>" + result + "</p>").insertAfter(row.find(".level"));
-                iconWrap.css("width", "175px");
-                iconWrap.find("ul").css("width", "initial");
-            });
+            $("<span class='level left' style='border-left: 0px solid transparent; width: 70px;'>" + result + "</p>").insertAfter(row.find(".level"));
+            iconWrap.css("width", "175px");
+            iconWrap.find("ul").css("width", "initial");
         }, delay);
     });
 }
@@ -377,6 +498,7 @@ function shouldLoad(page) {
     if (settings.pages.bounties && page == "bounties") return true;
     if (settings.pages.blacklist && page == "blacklist") return true;
     if (settings.pages.factionWall && page == "factions" && hasSearchTag("step", "your")) return true;
+    if (settings.pages.competition && page == "competition") return true;
 
     return false;
 }
@@ -396,41 +518,83 @@ function hasSearchTag(tag, value) {
     return !value ? params.has(tag) : params.get(tag) == value;
 }
 
-function updateUser(id, level, callback) {
-    if (shouldIgnore(level)){
+function hasSpecialTag(tag, value) {
+    var params = new URLSearchParams(getSpecialSearch());
+
+    return !value ? params.has(tag) : params.get(tag) == value;
+}
+
+function updateUser(id, lvl, callback, delay) {
+    if (shouldIgnore(lvl)){
+        debug(`Ignoring ${id} with level ${lvl}.`)
         if (settings.ignore.showEmpty) callback(EMPTY_CHAR);
         return;
     }
 
-    sendAPIRequest("user", id, "profile,personalstats,crimes").then(function(oData) {
-        if (!oData.rank) return callback("ERROR API");
-        debug("Loaded information from the api!");
+    debug(`Estimating for ${id} with level ${lvl}.`)
 
-        var rankSpl = oData.rank.split(" ");
-        var rankStr = rankSpl[0];
-        if (rankSpl[1][0] === rankSpl[1][0].toLowerCase()) rankStr += " " + rankSpl[1];
+    let cached = getCachedStats(id);
+    if (cached) {
+        log(`Cached stats for ${id}! ${cached}`);
 
-        var rank = ranks[rankStr];
-        var crimes = oData.criminalrecord.total;
-        var networth = oData.personalstats.networth;
+        callback(cached);
+        return;
+    } else {
+        debug(`NONE Cached stats for ${id}!`, cache[PREFIX_CACHE + id]);
+    }
 
-        var trLevel = 0, trCrime = 0, trNetworth = 0;
-        for (let l in triggerLevel) {
-            if (triggerLevel[l] <= level) trLevel++;
-        }
-        for (let c in triggerCrime) {
-            if (triggerCrime[c] <= crimes) trCrime++;
-        }
-        for (let nw in triggerNetworth) {
-            if (triggerNetworth[nw] <= networth) trNetworth++;
-        }
+    setTimeout(function(){
+        sendAPIRequest("user", id, "profile,personalstats,crimes").then(function(oData) {
+            if (!oData.rank) return callback("ERROR API (" + oData.error.code + ")");
+            debug("Loaded information from the api!");
 
-        var statLevel = rank - trLevel - trCrime - trNetworth - 1;
+            var rankSpl = oData.rank.split(" ");
+            var rankStr = rankSpl[0];
+            if (rankSpl[1][0] === rankSpl[1][0].toLowerCase()) rankStr += " " + rankSpl[1];
 
-        var estimated = estimatedStats[statLevel];
-        if (!estimated) estimated = "N/A";
+            var level = oData.level;
+            var rank = ranks[rankStr];
+            var crimes = oData.criminalrecord.total;
+            var networth = oData.personalstats.networth;
 
-        debug("Estimated stats!");
-        callback(estimated);
-    });
+            var trLevel = 0, trCrime = 0, trNetworth = 0;
+            for (let l in triggerLevel) {
+                if (triggerLevel[l] <= level) trLevel++;
+            }
+            for (let c in triggerCrime) {
+                if (triggerCrime[c] <= crimes) trCrime++;
+            }
+            for (let nw in triggerNetworth) {
+                if (triggerNetworth[nw] <= networth) trNetworth++;
+            }
+
+            var statLevel = rank - trLevel - trCrime - trNetworth - 1;
+
+            var estimated = estimatedStats[statLevel];
+            if (!estimated) estimated = "N/A";
+
+            debug(`Estimated stats for ${id} with level ${lvl}.`)
+
+            cache[PREFIX_CACHE + id] = {};
+            cache[PREFIX_CACHE + id].value = estimated;
+            cache[PREFIX_CACHE + id].end = Date.now() + (estimated == estimatedStats[estimatedStats.length - 1] ? settings.cache.last : settings.cache.normal);
+
+            setCache("statestimate", cache, -1, true);
+            callback(estimated);
+        });
+    }, delay);
+}
+
+function getCachedStats(id) {
+    let cached = cache[PREFIX_CACHE + id];
+    if (cached) {
+        debug(`Cached stats for ${id}?`);
+
+        let end = cached.end;
+        if (end == -1 || end >= Date.now())
+            return cached.value;
+        else
+            cache[PREFIX_CACHE + id] = undefined;
+    }
+    return undefined;
 }
