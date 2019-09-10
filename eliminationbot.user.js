@@ -1,14 +1,13 @@
 // ==UserScript==
-// @name           Elimination Bot
+// @name           TORN: Elimination Bot
 // @version        1.0.0
 // @namespace      http://darkcoder.xyz
 // @match          https://www.torn.com/profiles.php*
 // @require        http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
 // @require        https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @downloadURL    https://github.com/DeKleineKobini/Torn-Script/raw/master/eliminationbot.user.js
 // @grant          GM_xmlhttpRequest
 // ==/UserScript==
-
-
 
 waitForKeyElements ("#competition-profile-wrapper > div > div.cont.bottom-round > div > span > div.block-info > div.score", actionFunction);
 
@@ -20,17 +19,16 @@ function actionFunction (jNode) {
     scores = {score : score, position: position, last_updated: last_updated};
     console.log(scores);
     if(team == "sigil trolls") {
-        GM_xmlhttpRequest ( {
-        method:     "POST",
-        url:        "http://darkcoder.pythonanywhere.com",
-        data:       JSON.stringify ( scores ),
-        headers:    {
-            "Content-Type": "application/json"
-        },
-        onload:     function (response) {
-            console.log ("POSTED");
-        }
+        GM_xmlhttpRequest ({
+            method:     "POST",
+            url:        "http://darkcoder.pythonanywhere.com",
+            data:       JSON.stringify ( scores ),
+            headers:    {
+                "Content-Type": "application/json"
+            },
+            onload:     function (response) {
+                console.log ("POSTED");
+            }
+        });
     }
-  );
-}
 }
