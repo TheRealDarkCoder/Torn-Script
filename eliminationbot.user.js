@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           TORN: Elimination Bot Scraper
-// @version        2.1.0
+// @version        2.2.0
 // @namespace      http://darkcoder.xyz
 // @match          https://www.torn.com/competition.php*
 // @require        http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
@@ -65,11 +65,14 @@ setInterval (function () {
 
     for(let i = 0; i < teamNames.length; i++){
         let teamName = teamNames[i];
+
         let score = document.querySelector("#" + teamNames[i] + " > ul > li.score > span");
+        let lives = document.querySelector("#" + teamNames[i] + " > ul > li.lives");
         if (score) {
             for (var k in data) {
                 if (data[k].name == teamName) {
                     data[k].score = parseInt(score.innerText.replace(',', ""));
+                    data[k].lives = parseInt(lives.innerText);
                 }
             }
         }
