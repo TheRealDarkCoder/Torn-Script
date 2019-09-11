@@ -2,9 +2,7 @@
 // @name           TORN: Elimination Bot Scraper
 // @version        2.2.0
 // @namespace      http://darkcoder.xyz
-// @match          https://www.torn.com/competition.php*
-// @require        http://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js
-// @require        https://gist.github.com/raw/2625891/waitForKeyElements.js
+// @match          https://www.torn.com/competition.php
 // @downloadURL    https://github.com/DeKleineKobini/Torn-Script/raw/master/eliminationbot.user.js
 // @grant          GM_xmlhttpRequest
 // ==/UserScript==
