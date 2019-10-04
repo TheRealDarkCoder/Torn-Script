@@ -1,15 +1,14 @@
 ---
-name: Request
-about: Make a request for a tool.
+name: Bug Report
+about: Report a bug here.
 title: ''
-labels: ''
+labels: bug
 assignees: DeKleineKobini
 
 ---
 
-**Name:** <name> for <requester>
+**Name:** <name>
 **Description:** <small description>
-**Price:** <x>M
 
 **Details:**
 - [ ] <details here with checkmarks>
